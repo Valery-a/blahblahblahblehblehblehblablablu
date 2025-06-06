@@ -1,4 +1,19 @@
 cmake_minimum_required(VERSION 3.10)
-project(MyProject)
+project(BlahBlahChat)
+
 set(CMAKE_CXX_STANDARD 17)
-add_executable(a main.cpp)
+
+include_directories(
+    src/util
+    src/users
+    src/chats
+    src/system
+    src/storage
+)
+
+file(GLOB_RECURSE SOURCES
+    src/*.cpp
+    main.cpp
+)
+
+add_executable(BlahBlahChat ${SOURCES})

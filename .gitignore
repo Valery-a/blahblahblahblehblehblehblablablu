@@ -10,3 +10,10 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 build/a
+/build
+build/BlahBlahChat
+build/data/chats.dat
+build/data/chats.txt
+build/data/messages.dat
+build/data/messages.txt
+build/data/users.txt

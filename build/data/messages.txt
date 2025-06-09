@@ -1,8 +1,2 @@
-chat mazna_group
-0
-chat mazna_group
-0
-chat mazna_group
-0
-chat mazna_group
+chat team_group
 0

@@ -1,5 +1,3 @@
-user mazna *****
-user test *****
-user mazda *****
-user mazzna *****
-user tester mazna
+admin alice secret 0000
+user bob bobpass
+user clara clarapass

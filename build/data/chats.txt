@@ -1,8 +1,2 @@
-chat mazna_group
-participants 3 u1 u2 mazda 
-chat mazna_group
-participants 5 u1 u2 x y mazda 
-chat mazna_group
-participants 5 x y u1 u2 mazda 
-chat mazna_group
-participants 3 x y mazda 
+chat team_group
+participants 2 alice clara

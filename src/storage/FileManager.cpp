@@ -1,314 +1,266 @@
 #include "FileManager.h"
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
+#include <ctime>
 
-// USERS
+bool FileManager::loadUsers(MyVector<User*>& users, const MyString& filename) {
+    std::ifstream in(filename.c_str());
+    if (!in) {
+        std::cerr << "No user data found (" << filename.c_str() << ")\n";
+        return false;
+    }
+    std::string type, uname, pwd, code;
+    while (in >> type >> uname >> pwd) {
+        if (type == "admin") {
+            in >> code;
+            users.push_back(new Admin(
+                MyString(uname.c_str()),
+                MyString(pwd.c_str()),
+                MyString(code.c_str())
+            ));
+        } else {
+            users.push_back(new User(
+                MyString(uname.c_str()),
+                MyString(pwd.c_str())
+            ));
+        }
+    }
+    return true;
+}
 
 void FileManager::saveUsers(const MyVector<User*>& users, const MyString& filename) {
     std::ofstream out(filename.c_str());
-    if (!out) {
-        std::cerr << "Error opening file for saving users.\n";
-        return;
-    }
-
+    if (!out) { std::cerr << "Error saving users.\n"; return; }
     for (size_t i = 0; i < users.size(); ++i) {
-        out << (users[i]->isAdmin() ? "admin" : "user") << " ";
-        out << users[i]->getUsername().c_str() << " ";
-        out << users[i]->getPassword().c_str();
-        out << "\n";
-    }
-
-    out.close();
-}
-
-void FileManager::loadUsers(MyVector<User*>& users, const MyString& filename) {
-    std::ifstream in(filename.c_str());
-    if (!in) {
-        std::cerr << "No user data found.\n";
-        return;
-    }
-
-    MyString type, username, password;
-    while (in >> type >> username >> password) {
-        if (type == "admin") {
-            users.push_back(new Admin(username, password));
+        if (users[i]->isAdmin()) {
+            Admin* a = dynamic_cast<Admin*>(users[i]);
+            out << "admin "
+                << a->getUsername().c_str() << " "
+                << a->getPassword().c_str() << " "
+                << a->getAdminCode().c_str() << "\n";
         } else {
-            users.push_back(new User(username, password));
+            out << "user "
+                << users[i]->getUsername().c_str() << " "
+                << users[i]->getPassword().c_str() << "\n";
         }
     }
-
-
-    in.close();
 }
 
-// CHATS
+bool FileManager::loadChats(MyVector<Chat*>& chats, const MyString& filename) {
+    std::ifstream in(filename.c_str());
+    if (!in) {
+        std::cerr << "No chat data found (" << filename.c_str() << ")\n";
+        return false;
+    }
+    std::string label, idBuf;
+    while (in >> label >> idBuf) {
+        if (label != "chat") continue;
+        size_t count;
+        in >> label >> count;
+        if (label != "participants") {
+            std::cerr << "Malformed chat file.\n";
+            return false;
+        }
+        std::vector<std::string> parts(count);
+        for (size_t i = 0; i < count; ++i) in >> parts[i];
+        bool isGroup = idBuf.size() > 6 && idBuf.substr(idBuf.size()-6) == "_group";
+        Chat* c = nullptr;
+        if (isGroup) {
+            std::string gname = idBuf.substr(0, idBuf.size()-6);
+            c = new GroupChat(
+                MyString(idBuf.c_str()),
+                MyString(gname.c_str()),
+                MyString(parts[0].c_str())
+            );
+            for (size_t i = 1; i < parts.size(); ++i)
+                c->addParticipant(MyString(parts[i].c_str()));
+        } else if (parts.size() == 2) {
+            c = new IndividualChat(
+                MyString(parts[0].c_str()),
+                MyString(parts[1].c_str())
+            );
+        }
+        if (c) chats.push_back(c);
+    }
+    return true;
+}
 
 void FileManager::saveChats(const MyVector<Chat*>& chats, const MyString& filename) {
     std::ofstream out(filename.c_str());
-    if (!out) {
-        std::cerr << "Error opening file for saving chats.\n";
-        return;
-    }
-
+    if (!out) { std::cerr << "Error saving chats.\n"; return; }
     for (size_t i = 0; i < chats.size(); ++i) {
         out << "chat " << chats[i]->getID().c_str() << "\n";
-
         const MyVector<MyString>& parts = chats[i]->getParticipants();
-        out << "participants " << parts.size() << " ";
-        for (size_t j = 0; j < parts.size(); ++j) {
-            out << parts[j].c_str() << " ";
-        }
+        out << "participants " << parts.size();
+        for (size_t j = 0; j < parts.size(); ++j)
+            out << " " << parts[j].c_str();
         out << "\n";
     }
-
-    out.close();
 }
 
-void FileManager::loadChats(MyVector<Chat*>& chats, const MyString& filename) {
+bool FileManager::loadMessages(MyVector<Chat*>& chats, const MyString& filename) {
     std::ifstream in(filename.c_str());
     if (!in) {
-        std::cerr << "No chat data found.\n";
-        return;
+        std::cerr << "No messages to load (" << filename.c_str() << ")\n";
+        return false;
     }
-
-    MyString label, chatID;
-    while (in >> label >> chatID) {
+    std::string label, idBuf;
+    while (in >> label >> idBuf) {
         if (label != "chat") continue;
-
-        Chat* c = new IndividualChat("u1", "u2");
-        *const_cast<MyString*>(&c->getID()) = chatID; // force-set ID
-        chats.push_back(c);
-
-        in >> label;
-        if (label == "participants") {
-            size_t count;
-            in >> count;
-            for (size_t i = 0; i < count; ++i) {
-                MyString user;
-                in >> user;
-                c->addParticipant(user);
+        MyString chatID(idBuf.c_str());
+        size_t msgCount;
+        in >> msgCount;
+        in.ignore();
+        Chat* chat = nullptr;
+        for (size_t i = 0; i < chats.size(); ++i)
+            if (chats[i]->getID() == chatID) { chat = chats[i]; break; }
+        for (size_t i = 0; i < msgCount; ++i) {
+            std::string sender, content;
+            std::getline(in, sender);
+            std::getline(in, content);
+            time_t ts; in >> ts; in.ignore();
+            if (chat) {
+                Message msg(MyString(sender.c_str()), MyString(content.c_str()));
+                msg.setTimestamp(ts);
+                chat->addMessage(msg);
             }
         }
     }
-
-    in.close();
+    return true;
 }
 
 void FileManager::saveMessages(const MyVector<Chat*>& chats, const MyString& filename) {
     std::ofstream out(filename.c_str());
-    if (!out) {
-        std::cerr << "Error saving messages.\n";
-        return;
-    }
-
+    if (!out) { std::cerr << "Error saving messages.\n"; return; }
     for (size_t i = 0; i < chats.size(); ++i) {
         out << "chat " << chats[i]->getID().c_str() << "\n";
         const MyVector<Message>& msgs = chats[i]->getMessages();
         out << msgs.size() << "\n";
         for (size_t j = 0; j < msgs.size(); ++j) {
-            out << msgs[j].getSender().c_str() << "\n";
+            out << msgs[j].getSender().c_str()  << "\n";
             out << msgs[j].getContent().c_str() << "\n";
-            out << msgs[j].getTimestamp() << "\n";
+            out << msgs[j].getTimestamp()       << "\n";
         }
     }
-
-    out.close();
 }
 
-void FileManager::loadMessages(MyVector<Chat*>& chats, const MyString& filename) {
-    std::ifstream in(filename.c_str());
-    if (!in) {
-        std::cerr << "No messages to load.\n";
-        return;
-    }
-
-    MyString label, chatID;
-    while (in >> label >> chatID) {
-        if (label != "chat") continue;
-
-        Chat* chat = nullptr;
-        for (size_t i = 0; i < chats.size(); ++i) {
-            if (chats[i]->getID() == chatID) {
-                chat = chats[i];
-                break;
-            }
+bool FileManager::loadChatsBinary(MyVector<Chat*>& chats, const MyString& filename) {
+    std::ifstream in(filename.c_str(), std::ios::binary);
+    if (!in) return false;
+    size_t chatCount; in.read(reinterpret_cast<char*>(&chatCount), sizeof(chatCount));
+    for (size_t i = 0; i < chatCount; ++i) {
+        size_t len; in.read(reinterpret_cast<char*>(&len), sizeof(len));
+        std::string idBuf(len, '\0'); in.read(&idBuf[0], len);
+        size_t pCount; in.read(reinterpret_cast<char*>(&pCount), sizeof(pCount));
+        std::vector<std::string> parts(pCount);
+        for (size_t j = 0; j < pCount; ++j) {
+            size_t l2; in.read(reinterpret_cast<char*>(&l2), sizeof(l2));
+            parts[j].resize(l2);
+            in.read(&parts[j][0], l2);
         }
-
-        if (!chat) continue;
-
-        size_t messageCount;
-        in >> messageCount;
-        in.ignore(); // skip newline
-
-        for (size_t i = 0; i < messageCount; ++i) {
-            std::string senderStr, contentStr;
-            std::getline(in, senderStr);
-            std::getline(in, contentStr);
-            time_t timestamp;
-            in >> timestamp;
-            in.ignore();
-
-            Message msg(MyString(senderStr.c_str()), MyString(contentStr.c_str()));
-            msg.setTimestamp(timestamp);
-            chat->addMessage(msg);
+        bool isGroup = idBuf.size()>6 && idBuf.substr(idBuf.size()-6)=="_group";
+        Chat* c = nullptr;
+        if (isGroup) {
+            std::string gname = idBuf.substr(0, idBuf.size()-6);
+            c = new GroupChat(
+                MyString(idBuf.c_str()),
+                MyString(gname.c_str()),
+                MyString(parts[0].c_str())
+            );
+            for (size_t k = 1; k < parts.size(); ++k)
+                c->addParticipant(MyString(parts[k].c_str()));
+        } else if (parts.size() == 2) {
+            c = new IndividualChat(
+                MyString(parts[0].c_str()),
+                MyString(parts[1].c_str())
+            );
         }
+        if (c) chats.push_back(c);
     }
-
-    in.close();
+    return true;
 }
 
 void FileManager::saveChatsBinary(const MyVector<Chat*>& chats, const MyString& filename) {
     std::ofstream out(filename.c_str(), std::ios::binary);
     if (!out) return;
-
     size_t chatCount = chats.size();
     out.write(reinterpret_cast<const char*>(&chatCount), sizeof(chatCount));
-
     for (size_t i = 0; i < chatCount; ++i) {
-        MyString id = chats[i]->getID();
+        const MyString& id = chats[i]->getID();
         size_t len = id.size();
         out.write(reinterpret_cast<const char*>(&len), sizeof(len));
         out.write(id.c_str(), len);
-
-        const MyVector<MyString>& participants = chats[i]->getParticipants();
-        size_t pCount = participants.size();
+        const MyVector<MyString>& parts = chats[i]->getParticipants();
+        size_t pCount = parts.size();
         out.write(reinterpret_cast<const char*>(&pCount), sizeof(pCount));
         for (size_t j = 0; j < pCount; ++j) {
-            len = participants[j].size();
-            out.write(reinterpret_cast<const char*>(&len), sizeof(len));
-            out.write(participants[j].c_str(), len);
+            const MyString& p = parts[j];
+            size_t l2       = p.size();
+            out.write(reinterpret_cast<const char*>(&l2), sizeof(l2));
+            out.write(p.c_str(), l2);
         }
     }
-
-    out.close();
 }
 
-void FileManager::loadChatsBinary(MyVector<Chat*>& chats, const MyString& filename) {
+bool FileManager::loadMessagesBinary(MyVector<Chat*>& chats, const MyString& filename) {
     std::ifstream in(filename.c_str(), std::ios::binary);
-    if (!in) return;
-
-    size_t chatCount;
-    in.read(reinterpret_cast<char*>(&chatCount), sizeof(chatCount));
-
+    if (!in) return false;
+    size_t chatCount; in.read(reinterpret_cast<char*>(&chatCount), sizeof(chatCount));
     for (size_t i = 0; i < chatCount; ++i) {
-        size_t len;
-        in.read(reinterpret_cast<char*>(&len), sizeof(len));
-        char* buf = new char[len + 1];
-        in.read(buf, len);
-        buf[len] = '\0';
-        MyString chatID(buf);
-        delete[] buf;
-
-        Chat* chat = new IndividualChat("x", "y");
-        *const_cast<MyString*>(&chat->getID()) = chatID;
-
-        size_t pCount;
-        in.read(reinterpret_cast<char*>(&pCount), sizeof(pCount));
-        for (size_t j = 0; j < pCount; ++j) {
-            in.read(reinterpret_cast<char*>(&len), sizeof(len));
-            buf = new char[len + 1];
-            in.read(buf, len);
-            buf[len] = '\0';
-            chat->addParticipant(MyString(buf));
-            delete[] buf;
+        size_t len; in.read(reinterpret_cast<char*>(&len), sizeof(len));
+        std::string idBuf(len, '\0'); in.read(&idBuf[0], len);
+        MyString chatID(idBuf.c_str());
+        size_t mCount; in.read(reinterpret_cast<char*>(&mCount), sizeof(mCount));
+        Chat* chat = nullptr;
+        for (size_t j = 0; j < chats.size(); ++j) {
+            if (chats[j]->getID() == chatID) { chat = chats[j]; break; }
         }
-
-        chats.push_back(chat);
+        for (size_t j = 0; j < mCount; ++j) {
+            in.read(reinterpret_cast<char*>(&len), sizeof(len));
+            std::string s(len, '\0'); in.read(&s[0], len);
+            in.read(reinterpret_cast<char*>(&len), sizeof(len));
+            std::string c2(len, '\0'); in.read(&c2[0], len);
+            time_t ts; in.read(reinterpret_cast<char*>(&ts), sizeof(ts));
+            if (chat) {
+                Message msg(MyString(s.c_str()), MyString(c2.c_str()));
+                msg.setTimestamp(ts);
+                chat->addMessage(msg);
+            }
+        }
     }
-
-    in.close();
+    return true;
 }
 
 void FileManager::saveMessagesBinary(const MyVector<Chat*>& chats, const MyString& filename) {
     std::ofstream out(filename.c_str(), std::ios::binary);
     if (!out) return;
-
     size_t chatCount = chats.size();
     out.write(reinterpret_cast<const char*>(&chatCount), sizeof(chatCount));
-
     for (size_t i = 0; i < chatCount; ++i) {
-        MyString id = chats[i]->getID();
-        size_t len = id.size();
-        out.write(reinterpret_cast<const char*>(&len), sizeof(len));
-        out.write(id.c_str(), len);
+        {
+            const MyString& id = chats[i]->getID();
+            size_t len = id.size();
+            out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+            out.write(id.c_str(), len);
+        }
 
-        const MyVector<Message>& messages = chats[i]->getMessages();
-        size_t mCount = messages.size();
+        const MyVector<Message>& msgs = chats[i]->getMessages();
+        size_t mCount = msgs.size();
         out.write(reinterpret_cast<const char*>(&mCount), sizeof(mCount));
         for (size_t j = 0; j < mCount; ++j) {
-            MyString sender = messages[j].getSender();
-            MyString text = messages[j].getContent();
-            std::time_t time = messages[j].getTimestamp();
-
+            const MyString& sender = msgs[j].getSender();
+            const MyString& text   = msgs[j].getContent();
+            time_t          tstamp = msgs[j].getTimestamp();
+            size_t len;
             len = sender.size();
             out.write(reinterpret_cast<const char*>(&len), sizeof(len));
             out.write(sender.c_str(), len);
-
             len = text.size();
             out.write(reinterpret_cast<const char*>(&len), sizeof(len));
             out.write(text.c_str(), len);
-
-            out.write(reinterpret_cast<const char*>(&time), sizeof(time));
+            out.write(reinterpret_cast<const char*>(&tstamp), sizeof(tstamp));
         }
     }
-
-    out.close();
 }
-
-void FileManager::loadMessagesBinary(MyVector<Chat*>& chats, const MyString& filename) {
-    std::ifstream in(filename.c_str(), std::ios::binary);
-    if (!in) return;
-
-    size_t chatCount;
-    in.read(reinterpret_cast<char*>(&chatCount), sizeof(chatCount));
-
-    for (size_t i = 0; i < chatCount; ++i) {
-        size_t len;
-        in.read(reinterpret_cast<char*>(&len), sizeof(len));
-        char* buf = new char[len + 1];
-        in.read(buf, len);
-        buf[len] = '\0';
-        MyString chatID(buf);
-        delete[] buf;
-
-        Chat* chat = nullptr;
-        for (size_t j = 0; j < chats.size(); ++j) {
-            if (chats[j]->getID() == chatID) {
-                chat = chats[j];
-                break;
-            }
-        }
-
-        if (!chat) continue;
-
-        size_t mCount;
-        in.read(reinterpret_cast<char*>(&mCount), sizeof(mCount));
-        for (size_t j = 0; j < mCount; ++j) {
-            // sender
-            in.read(reinterpret_cast<char*>(&len), sizeof(len));
-            buf = new char[len + 1];
-            in.read(buf, len);
-            buf[len] = '\0';
-            MyString sender(buf);
-            delete[] buf;
-
-            // message
-            in.read(reinterpret_cast<char*>(&len), sizeof(len));
-            buf = new char[len + 1];
-            in.read(buf, len);
-            buf[len] = '\0';
-            MyString text(buf);
-            delete[] buf;
-
-            std::time_t time;
-            in.read(reinterpret_cast<char*>(&time), sizeof(time));
-
-            Message msg(sender, text);
-            msg.setTimestamp(time);
-            chat->addMessage(msg);
-        }
-    }
-
-    in.close();
-}
-

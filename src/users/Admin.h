@@ -9,6 +9,7 @@ private:
 
 public:
     Admin();
+    static const MyString MASTER_CODE;
     Admin(const MyString& username, const MyString& password, const MyString& code);
 
     const MyString& getAdminCode() const;

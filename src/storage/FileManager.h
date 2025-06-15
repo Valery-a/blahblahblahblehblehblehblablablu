@@ -11,20 +11,20 @@
 
 class FileManager {
 public:
-    static bool  loadUsers         (MyVector<User*>&    users,   const MyString& filename);
-    static void  saveUsers         (const MyVector<User*>& users, const MyString& filename);
+    static bool  loadUsers           (MyVector<User*>&    users,   const MyString& filename);
+    static void  saveUsers           (const MyVector<User*>& users, const MyString& filename);
+    static bool  loadUsersBinary     (MyVector<User*>&    users,   const MyString& filename);
+    static void  saveUsersBinary     (const MyVector<User*>& users, const MyString& filename);
 
-    static bool  loadChats         (MyVector<Chat*>&    chats,   const MyString& filename);
-    static void  saveChats         (const MyVector<Chat*>& chats, const MyString& filename);
+    static bool  loadChats           (MyVector<Chat*>&    chats,   const MyString& filename);
+    static void  saveChats           (const MyVector<Chat*>& chats, const MyString& filename);
+    static bool  loadMessages        (MyVector<Chat*>&    chats,   const MyString& filename);
+    static void  saveMessages        (const MyVector<Chat*>& chats, const MyString& filename);
 
-    static bool  loadMessages      (MyVector<Chat*>&    chats,   const MyString& filename);
-    static void  saveMessages      (const MyVector<Chat*>& chats, const MyString& filename);
-
-    static bool  loadChatsBinary   (MyVector<Chat*>&    chats,   const MyString& filename);
-    static void  saveChatsBinary   (const MyVector<Chat*>& chats, const MyString& filename);
-
-    static bool  loadMessagesBinary(MyVector<Chat*>&    chats,   const MyString& filename);
-    static void  saveMessagesBinary(const MyVector<Chat*>& chats, const MyString& filename);
+    static bool  loadChatsBinary     (MyVector<Chat*>&    chats,   const MyString& filename);
+    static void  saveChatsBinary     (const MyVector<Chat*>& chats, const MyString& filename);
+    static bool  loadMessagesBinary  (MyVector<Chat*>&    chats,   const MyString& filename);
+    static void  saveMessagesBinary  (const MyVector<Chat*>& chats, const MyString& filename);
 };
 
 #endif

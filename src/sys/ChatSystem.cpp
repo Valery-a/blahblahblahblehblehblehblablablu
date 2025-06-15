@@ -28,10 +28,23 @@ bool ChatSystem::registerUser(const MyString& u, const MyString& p) {
 bool ChatSystem::registerUser(const MyString& u, const MyString& p, bool isAdmin) {
     return registerUser(u, p, isAdmin, "");
 }
-bool ChatSystem::registerUser(const MyString& u, const MyString& p, bool isAdmin, const MyString& code) {
-    if (findUser(u)) return false;
-    if (isAdmin) users.push_back(new Admin(u, p, code));
-    else         users.push_back(new User(u, p));
+bool ChatSystem::registerUser(const MyString& u,
+                             const MyString& p,
+                             bool isAdmin,
+                             const MyString& code)
+{
+    if (findUser(u)) 
+        return false;
+
+    if (isAdmin) {
+        if (code != Admin::MASTER_CODE) {
+            return false;
+        }
+        users.push_back(new Admin(u, p, code));
+    }
+    else {
+        users.push_back(new User(u, p));
+    }
     return true;
 }
 
@@ -89,11 +102,11 @@ void ChatSystem::selectChat(const MyString& id) {
     viewMessages(id);
     if (!loggedInUser) return;
     std::cout << "Enter message: ";
-    std::string line;
-    if (std::getline(std::cin, line) && !line.empty()) {
-        sendMessage(id, MyString(line.c_str()));
-    }
+    char buf[2048];
+    if (std::cin.getline(buf, sizeof(buf)) && buf[0] != '\0')
+        sendMessage(id, MyString(buf));
 }
+
 
 void ChatSystem::viewMyChats() const {
     if (!loggedInUser) return;
@@ -276,11 +289,27 @@ bool ChatSystem::deleteChat(const MyString& chatID) {
 }
 
 void ChatSystem::viewAllUsers() const {
+    MyVector<MyString> seen;
+
     for (size_t i = 0; i < users.size(); ++i) {
         User* u = users[i];
-        std::cout << "- " << u->getUsername().c_str();
-        if (u->isAdmin()) std::cout << " (admin)";
-        std::cout << "\n";
+        MyString name = u->getUsername();
+
+        bool already = false;
+        for (size_t j = 0; j < seen.size(); ++j) {
+            if (seen[j] == name) {
+                already = true;
+                break;
+            }
+        }
+
+        if (!already) {
+            seen.push_back(name);
+            std::cout << "- " << name.c_str();
+            if (u->isAdmin())
+                std::cout << " (admin)";
+            std::cout << "\n";
+        }
     }
 }
 
@@ -439,4 +468,14 @@ void ChatSystem::initializeUserChats() {
             }
         }
     }
+}
+
+char* ChatSystem::getArg(char*& p) {
+    if (!p) return nullptr;
+    while (*p == ' ') ++p;
+    if (*p == '\0') return nullptr;
+    char* start = p;
+    while (*p != ' ' && *p != '\0') ++p;
+    if (*p == ' ') { *p = '\0'; ++p; }
+    return start;
 }

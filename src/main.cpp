@@ -1,245 +1,276 @@
 #include <iostream>
+#include <filesystem>
+#include <cstring>
 #include "sys/ChatSystem.h"
 #include "storage/FileManager.h"
-#include "chats/GroupChat.h"
-#include "anim/CatRunner.h"
 
 int main() {
     ChatSystem app;
-    CatRunner::play();
-    FileManager::loadUsers(app.getUsers(), "data/users.txt");
-    if (FileManager::loadChatsBinary(app.getChats(), "data/chats.dat")) {
-        FileManager::loadMessagesBinary(app.getChats(), "data/messages.dat");
-    } else {
-        FileManager::loadChats(app.getChats(), "data/chats.txt");
-        FileManager::loadMessages(app.getChats(), "data/messages.txt");
+    std::filesystem::create_directories("data");
+    if (!FileManager::loadUsersBinary(app.getUsers(), "data/users.dat.bin")) {
+        FileManager::loadUsers(app.getUsers(), "data/users.txt");
+    }
+        bool binFound = false;
+    for (auto& entry : std::filesystem::directory_iterator("data")) {
+        std::filesystem::path p         = entry.path();
+        std::filesystem::path fnamePath = p.filename();
+        const char*       fullPath     = p.c_str();
+        const char*       fname        = fnamePath.c_str();
+
+        if (std::strncmp(fname, "chats_", 6) == 0 && std::strstr(fname, ".dat.bin")) {
+            FileManager::loadChatsBinary   (app.getChats(), fullPath);
+            MyString msgFile = MyString("data/messages_") + MyString(fname + 6);
+            FileManager::loadMessagesBinary(app.getChats(), msgFile.c_str());
+            binFound = true;
+        }
+    }
+
+    if (!binFound) {
+        for (auto& entry : std::filesystem::directory_iterator("data")) {
+            std::filesystem::path p         = entry.path();
+            std::filesystem::path fnamePath = p.filename();
+            const char*       fullPath     = p.c_str();
+            const char*       fname        = fnamePath.c_str();
+
+            if (std::strncmp(fname, "chats_", 6) == 0 && std::strstr(fname, ".txt")) {
+                FileManager::loadChats   (app.getChats(), fullPath);
+                MyString msgFile = MyString("data/messages_") + MyString(fname + 6);
+                FileManager::loadMessages(app.getChats(), msgFile.c_str());
+            }
+        }
     }
     app.initializeUserChats();
 
-    std::string line;
+
+    char line[1024];
     while (true) {
         std::cout << "\n> ";
-        if (!std::getline(std::cin, line)) break;
-        if (line.empty()) continue;
+        if (!std::cin.getline(line, sizeof(line))) break;
+        if (line[0] == '\0') continue;
 
-        size_t spacePos = line.find(' ');
-        std::string cmd = spacePos == std::string::npos ? line : line.substr(0, spacePos);
-        std::string args = spacePos == std::string::npos ? "" : line.substr(spacePos + 1);
+        char* cmd;
+        char* args;
+        char* sp = line;
+        while (*sp != ' ' && *sp != '\0') ++sp;
+        if (*sp == ' ') {
+            *sp = '\0';
+            cmd = line;
+            args = sp + 1;
+        } else {
+            cmd = line;
+            args = nullptr;
+        }
 
-        auto getArg = [&](size_t &pos) {
-            while (pos < args.size() && args[pos] == ' ') ++pos;
-            size_t start = pos;
-            while (pos < args.size() && args[pos] != ' ') ++pos;
-            return args.substr(start, pos - start);
-        };
-
-        if (cmd == "exit") {
+        if (strcmp(cmd, "exit") == 0) {
             break;
-        } else if (cmd == "register" || cmd == "create-account") {
-            size_t posArg = 0;
-            std::string u = getArg(posArg);
-            std::string pwd = getArg(posArg);
-            if (u.empty() || pwd.empty()) {
+        } else if (strcmp(cmd, "register") == 0 || strcmp(cmd, "create-account") == 0) {
+            char* pos = args;
+            char* u = ChatSystem::getArg(pos);
+            char* pwd = ChatSystem::getArg(pos);
+            if (!u || !pwd) {
                 std::cout << "Usage: register <username> <password> [admin]\n";
                 continue;
             }
-            std::string role = getArg(posArg);
-            if (role == "admin") {
-                std::string code;
+            char* role = ChatSystem::getArg(pos);
+            if (role && strcmp(role, "admin") == 0) {
                 std::cout << "Enter admin code: ";
-                std::getline(std::cin, code);
-                if (code.empty()) {
+                char code[256];
+                std::cin.getline(code, sizeof(code));
+                if (code[0] == '\0') {
                     std::cout << "Error: admin code cannot be empty.\n";
                     continue;
                 }
-                bool ok = app.registerUser(MyString(u.c_str()), MyString(pwd.c_str()), true, MyString(code.c_str()));
+                bool ok = app.registerUser(MyString(u), MyString(pwd), true, MyString(code));
                 std::cout << (ok ? "Admin registered.\n" : "Registration failed.\n");
             } else {
-                bool ok = app.registerUser(MyString(u.c_str()), MyString(pwd.c_str()));
+                bool ok = app.registerUser(MyString(u), MyString(pwd));
                 std::cout << (ok ? "User registered.\n" : "Username already taken.\n");
             }
-        } else if (cmd == "login") {
-            size_t posArg = 0;
-            std::string u = getArg(posArg);
-            if (u.empty()) {
+        } else if (strcmp(cmd, "login") == 0) {
+            char* pos = args;
+            char* u = ChatSystem::getArg(pos);
+            if (!u) {
                 std::cout << "Usage: login <username> [password]\n";
                 continue;
             }
-            std::string pwd = getArg(posArg);
-            if (pwd.empty()) {
+            char pwdBuf[256];
+            char* pwd = ChatSystem::getArg(pos);
+            if (!pwd) {
                 std::cout << "Enter password: ";
-                std::getline(std::cin, pwd);
+                std::cin.getline(pwdBuf, sizeof(pwdBuf));
+                pwd = pwdBuf;
             }
-            if (pwd.empty()) {
+            if (!pwd || pwd[0] == '\0') {
                 std::cout << "Error: password cannot be empty.\n";
                 continue;
             }
-            bool ok = app.login(MyString(u.c_str()), MyString(pwd.c_str()));
+            bool ok = app.login(MyString(u), MyString(pwd));
             if (ok) {
                 std::cout << "Logged in as " << u << ".\n";
             } else {
                 bool exists = false;
                 for (size_t i = 0; i < app.getUsers().size(); ++i) {
-                    if (app.getUsers()[i]->getUsername() == MyString(u.c_str())) {
+                    if (app.getUsers()[i]->getUsername() == MyString(u)) {
                         exists = true;
                         break;
                     }
                 }
                 if (!exists) {
                     std::cout << "User \"" << u << "\" not found. Register? (y/n): ";
-                    std::string ans;
-                    std::getline(std::cin, ans);
-                    if (!ans.empty() && (ans[0]=='y' || ans[0]=='Y')) {
-                        std::string newpass;
+                    char ans[8];
+                    std::cin.getline(ans, sizeof(ans));
+                    if (ans[0]=='y' || ans[0]=='Y') {
                         std::cout << "Enter password for new account: ";
-                        std::getline(std::cin, newpass);
-                        if (newpass.empty()) {
+                        char newpass[256];
+                        std::cin.getline(newpass, sizeof(newpass));
+                        if (newpass[0]=='\0') {
                             std::cout << "Error: password cannot be empty.\n";
                             continue;
                         }
-                        bool ok2 = app.registerUser(MyString(u.c_str()), MyString(newpass.c_str()));
+                        bool ok2 = app.registerUser(MyString(u), MyString(newpass));
                         std::cout << (ok2 ? "User registered. Please login again.\n" : "Registration failed.\n");
                     }
                 } else {
                     std::cout << "Invalid credentials.\n";
                 }
             }
-        } else if (cmd == "logout") {
+        } else if (strcmp(cmd, "logout") == 0) {
             app.logout();
             std::cout << "Logged out.\n";
-        } else if (cmd == "create-individual") {
-            size_t posArg = 0;
-            std::string other = getArg(posArg);
-            if (other.empty()) {
+        } else if (strcmp(cmd, "create-individual") == 0) {
+            char* pos = args;
+            char* other = ChatSystem::getArg(pos);
+            if (!other) {
                 std::cout << "Usage: create-individual <user>\n";
                 continue;
             }
-            bool ok = app.createIndividualChat(MyString(other.c_str()));
+            bool ok = app.createIndividualChat(MyString(other));
             std::cout << (ok ? "Chat created.\n" : "Chat could not be created.\n");
-        } else if (cmd == "create-group") {
-            size_t posArg = 0;
-            std::string g = getArg(posArg);
-            if (g.empty()) {
+        } else if (strcmp(cmd, "create-group") == 0) {
+            char* pos = args;
+            char* g = ChatSystem::getArg(pos);
+            if (!g) {
                 std::cout << "Usage: create-group <group_name>\n";
                 continue;
             }
-            bool ok = app.createGroupChat(MyString(g.c_str()));
+            bool ok = app.createGroupChat(MyString(g));
             std::cout << (ok ? "Group created.\n" : "Group could not be created.\n");
-        } else if (cmd == "request-join") {
-            size_t posArg = 0;
-            std::string cid = getArg(posArg);
-            if (cid.empty()) {
+        } else if (strcmp(cmd, "request-join") == 0) {
+            char* pos = args;
+            char* cid = ChatSystem::getArg(pos);
+            if (!cid) {
                 std::cout << "Usage: request-join <chat_id>\n";
                 continue;
             }
-            bool ok = app.requestJoin(MyString(cid.c_str()));
+            bool ok = app.requestJoin(MyString(cid));
             std::cout << (ok ? "Request sent or joined.\n" : "Cannot request join.\n");
-        } else if (cmd == "list-requests") {
-            size_t posArg = 0;
-            std::string cid = getArg(posArg);
-            if (cid.empty()) {
+        } else if (strcmp(cmd, "list-requests") == 0) {
+            char* pos = args;
+            char* cid = ChatSystem::getArg(pos);
+            if (!cid) {
                 std::cout << "Usage: list-requests <chat_id>\n";
                 continue;
             }
-            if (!app.listJoinRequests(MyString(cid.c_str()))) {
+            if (!app.listJoinRequests(MyString(cid))) {
                 std::cout << "Unauthorized or no such group.\n";
             }
-        } else if (cmd == "approve-join") {
-            size_t posArg = 0;
-            std::string cid = getArg(posArg);
-            std::string user = getArg(posArg);
-            if (cid.empty() || user.empty()) {
+        } else if (strcmp(cmd, "approve-join") == 0) {
+            char* pos = args;
+            char* cid = ChatSystem::getArg(pos);
+            char* user = ChatSystem::getArg(pos);
+            if (!cid || !user) {
                 std::cout << "Usage: approve-join <chat_id> <username>\n";
                 continue;
             }
-            bool ok = app.approveJoin(MyString(cid.c_str()), MyString(user.c_str()));
+            bool ok = app.approveJoin(MyString(cid), MyString(user));
             std::cout << (ok ? "User approved.\n" : "Cannot approve.\n");
-        } else if (cmd == "reject-join") {
-            size_t posArg = 0;
-            std::string cid = getArg(posArg);
-            std::string user = getArg(posArg);
-            if (cid.empty() || user.empty()) {
+        } else if (strcmp(cmd, "reject-join") == 0) {
+            char* pos = args;
+            char* cid = ChatSystem::getArg(pos);
+            char* user = ChatSystem::getArg(pos);
+            if (!cid || !user) {
                 std::cout << "Usage: reject-join <chat_id> <username>\n";
                 continue;
             }
-            bool ok = app.rejectJoin(MyString(cid.c_str()), MyString(user.c_str()));
+            bool ok = app.rejectJoin(MyString(cid), MyString(user));
             std::cout << (ok ? "Request rejected.\n" : "Cannot reject.\n");
-        } else if (cmd == "set-membership") {
-            size_t posArg = 0;
-            std::string cid = getArg(posArg);
-            std::string mode = getArg(posArg);
-            if (cid.empty() || (mode != "open" && mode != "closed")) {
+        } else if (strcmp(cmd, "set-membership") == 0) {
+            char* pos = args;
+            char* cid = ChatSystem::getArg(pos);
+            char* mode = ChatSystem::getArg(pos);
+            if (!cid || !mode || (strcmp(mode,"open")!=0 && strcmp(mode,"closed")!=0)) {
                 std::cout << "Usage: set-membership <chat_id> <open|closed>\n";
                 continue;
             }
-            bool ok = app.setGroupOpen(MyString(cid.c_str()), mode == "open");
-            std::cout << (ok ? std::string("Membership now ") + mode + ".\n" : "Cannot change membership mode.\n");
-        } else if (cmd == "select-chat") {
-            size_t posArg = 0;
-            std::string cid = getArg(posArg);
-            if (cid.empty()) {
+            bool ok = app.setGroupOpen(MyString(cid), strcmp(mode,"open")==0);
+            if (ok) std::cout << "Membership now " << mode << ".\n";
+            else std::cout << "Cannot change membership mode.\n";
+        } else if (strcmp(cmd, "select-chat") == 0) {
+            char* pos = args;
+            char* cid = ChatSystem::getArg(pos);
+            if (!cid) {
                 std::cout << "Usage: select-chat <chat_id>\n";
                 continue;
             }
-            app.selectChat(MyString(cid.c_str()));
-        } else if (cmd == "send") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            if (chatID.empty()) {
+            app.selectChat(MyString(cid));
+        } else if (strcmp(cmd, "send") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            if (!chatID) {
                 std::cout << "Usage: send <chat_id> <message>\n";
                 continue;
             }
-            while (posArg < args.size() && args[posArg] == ' ') ++posArg;
-            std::string msg = args.substr(posArg);
-            if (msg.empty()) {
+            char* msg = pos;
+            while (msg && *msg==' ') ++msg;
+            if (!msg || *msg=='\0') {
                 std::cout << "Error: message cannot be empty.\n";
                 continue;
             }
-            app.sendMessage(MyString(chatID.c_str()), MyString(msg.c_str()));
-        } else if (cmd == "view-messages") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            if (chatID.empty()) {
+            app.sendMessage(MyString(chatID), MyString(msg));
+        } else if (strcmp(cmd, "view-messages") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            if (!chatID) {
                 std::cout << "Usage: view-messages <chat_id>\n";
                 continue;
             }
-            app.viewMessages(MyString(chatID.c_str()));
-        } else if (cmd == "view-chats") {
+            app.viewMessages(MyString(chatID));
+        } else if (strcmp(cmd, "view-chats") == 0) {
             if (!app.getLoggedInUser()) {
                 std::cout << "Please login first.\n";
                 continue;
             }
             app.viewMyChats();
-        } else if (cmd == "view-members") {
-            size_t posArg = 0;
-            std::string cid = getArg(posArg);
-            if (cid.empty()) {
+        } else if (strcmp(cmd, "view-members") == 0) {
+            char* pos = args;
+            char* cid = ChatSystem::getArg(pos);
+            if (!cid) {
                 std::cout << "Usage: view-members <chat_id>\n";
                 continue;
             }
-            app.viewGroupMembers(MyString(cid.c_str()));
-        } else if (cmd == "add-member") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            std::string user = getArg(posArg);
-            if (chatID.empty() || user.empty()) {
+            app.viewGroupMembers(MyString(cid));
+        } else if (strcmp(cmd, "add-member") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            char* user = ChatSystem::getArg(pos);
+            if (!chatID || !user) {
                 std::cout << "Usage: add-member <chat_id> <user>\n";
                 continue;
             }
             Chat* c = nullptr;
             for (size_t i = 0; i < app.getChats().size(); ++i) {
-                if (app.getChats()[i]->getID() == MyString(chatID.c_str())) {
+                if (app.getChats()[i]->getID() == MyString(chatID)) {
                     c = app.getChats()[i];
                     break;
                 }
             }
-            if (!c || dynamic_cast<GroupChat*>(c) == nullptr) {
+            if (!c || dynamic_cast<GroupChat*>(c)==nullptr) {
                 std::cout << "Group not found.\n";
                 continue;
             }
             User* uPtr = nullptr;
             for (size_t i = 0; i < app.getUsers().size(); ++i) {
-                if (app.getUsers()[i]->getUsername() == MyString(user.c_str())) {
+                if (app.getUsers()[i]->getUsername()==MyString(user)) {
                     uPtr = app.getUsers()[i];
                     break;
                 }
@@ -248,34 +279,34 @@ int main() {
                 std::cout << "User \"" << user << "\" does not exist.\n";
                 continue;
             }
-            if (c->hasParticipant(MyString(user.c_str()))) {
+            if (c->hasParticipant(MyString(user))) {
                 std::cout << "User \"" << user << "\" is already in group.\n";
                 continue;
             }
-            bool ok = app.addMemberToGroup(MyString(chatID.c_str()), MyString(user.c_str()));
+            bool ok = app.addMemberToGroup(MyString(chatID), MyString(user));
             std::cout << (ok ? "Member added.\n" : "Failed. Must be group-admin or system-admin.\n");
-        } else if (cmd == "remove-member") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            std::string user = getArg(posArg);
-            if (chatID.empty() || user.empty()) {
+        } else if (strcmp(cmd, "remove-member") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            char* user = ChatSystem::getArg(pos);
+            if (!chatID || !user) {
                 std::cout << "Usage: remove-member <chat_id> <user>\n";
                 continue;
             }
             Chat* c = nullptr;
             for (size_t i = 0; i < app.getChats().size(); ++i) {
-                if (app.getChats()[i]->getID() == MyString(chatID.c_str())) {
+                if (app.getChats()[i]->getID() == MyString(chatID)) {
                     c = app.getChats()[i];
                     break;
                 }
             }
-            if (!c || dynamic_cast<GroupChat*>(c) == nullptr) {
+            if (!c || dynamic_cast<GroupChat*>(c)==nullptr) {
                 std::cout << "Group not found.\n";
                 continue;
             }
             User* uPtr = nullptr;
             for (size_t i = 0; i < app.getUsers().size(); ++i) {
-                if (app.getUsers()[i]->getUsername() == MyString(user.c_str())) {
+                if (app.getUsers()[i]->getUsername()==MyString(user)) {
                     uPtr = app.getUsers()[i];
                     break;
                 }
@@ -284,63 +315,66 @@ int main() {
                 std::cout << "User \"" << user << "\" does not exist.\n";
                 continue;
             }
-            if (!c->hasParticipant(MyString(user.c_str()))) {
+            if (!c->hasParticipant(MyString(user))) {
                 std::cout << "User \"" << user << "\" is not in group.\n";
                 continue;
             }
-            bool ok = app.removeMemberFromGroup(MyString(chatID.c_str()), MyString(user.c_str()));
+            bool ok = app.removeMemberFromGroup(MyString(chatID), MyString(user));
             std::cout << (ok ? "Member removed.\n" : "Failed. Must be group-admin or system-admin.\n");
-        } else if (cmd == "add-to-group") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            std::string user = getArg(posArg);
-            if (chatID.empty() || user.empty()) {
+        } else if (strcmp(cmd, "add-to-group") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            char* user = ChatSystem::getArg(pos);
+            if (!chatID || !user) {
                 std::cout << "Usage: add-to-group <chat_id> <user>\n";
                 continue;
             }
-            bool ok = app.addToGroup(MyString(chatID.c_str()), MyString(user.c_str()));
-            std::cout << (ok ? user + " added to group!\n" : "Failed to add to group.\n");
-        } else if (cmd == "kick-from-group") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            std::string user = getArg(posArg);
-            if (chatID.empty() || user.empty()) {
+            bool ok = app.addToGroup(MyString(chatID), MyString(user));
+            if (ok) std::cout << user << " added to group!\n";
+            else std::cout << "Failed to add to group.\n";
+        } else if (strcmp(cmd, "kick-from-group") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            char* user = ChatSystem::getArg(pos);
+            if (!chatID || !user) {
                 std::cout << "Usage: kick-from-group <chat_id> <user>\n";
                 continue;
             }
-            bool ok = app.kickFromGroup(MyString(chatID.c_str()), MyString(user.c_str()));
-            std::cout << (ok ? user + " removed from group!\n" : "Failed to remove from group.\n");
-        } else if (cmd == "set-group-admin") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            std::string user = getArg(posArg);
-            if (chatID.empty() || user.empty()) {
+            bool ok = app.kickFromGroup(MyString(chatID), MyString(user));
+            if (ok) std::cout << user << " removed from group!\n";
+            else std::cout << "Failed to remove from group.\n";
+        } else if (strcmp(cmd, "set-group-admin") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            char* user = ChatSystem::getArg(pos);
+            if (!chatID || !user) {
                 std::cout << "Usage: set-group-admin <chat_id> <user>\n";
                 continue;
             }
-            bool ok = app.setGroupAdmin(MyString(chatID.c_str()), MyString(user.c_str()));
-            std::cout << (ok ? user + " is now an admin!\n" : "Failed to set admin.\n");
-        } else if (cmd == "group-stats") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            if (chatID.empty()) {
+            bool ok = app.setGroupAdmin(MyString(chatID), MyString(user));
+            if (ok) std::cout << user << " is now an admin!\n";
+            else std::cout << "Failed to set admin.\n";
+        } else if (strcmp(cmd, "group-stats") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            if (!chatID) {
                 std::cout << "Usage: group-stats <chat_id>\n";
                 continue;
             }
-            app.groupStats(MyString(chatID.c_str()));
-        } else if (cmd == "leave-group") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            if (chatID.empty()) {
+            app.groupStats(MyString(chatID));
+        } else if (strcmp(cmd, "leave-group") == 0) {
+            char* pos = args;
+            char* chatID = ChatSystem::getArg(pos);
+            if (!chatID) {
                 std::cout << "Usage: leave-group <chat_id>\n";
                 continue;
             }
-            bool ok = app.leaveGroup(MyString(chatID.c_str()));
+            bool ok = app.leaveGroup(MyString(chatID));
             std::cout << (ok ? "You left the group.\n" : "Could not leave group.\n");
-        } else if (cmd == "delete-user") {
-            size_t posArg = 0;
-            std::string u = getArg(posArg);
-            if (u.empty()) {
+        } else if (strcmp(cmd, "delete-user") == 0) {
+            char* pos = args;
+            char* u2 = ChatSystem::getArg(pos);
+            if (!u2) {
                 std::cout << "Usage: delete-user <username>\n";
                 continue;
             }
@@ -348,12 +382,16 @@ int main() {
                 std::cout << "Error: require system-admin permissions.\n";
                 continue;
             }
-            bool ok = app.deleteUser(MyString(u.c_str()));
-            std::cout << (ok ? "User " + u + " deleted!\n" : "Failed.\n");
-        } else if (cmd == "delete-chat") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            if (chatID.empty()) {
+            bool ok = app.deleteUser(MyString(u2));
+            if (ok) {
+                std::cout << "User " << u2 << " deleted!\n";
+            } else {
+                std::cout << "Failed.\n";
+            }
+        } else if (strcmp(cmd, "delete-chat") == 0) {
+            char* pos = args;
+            char* cid2 = ChatSystem::getArg(pos);
+            if (!cid2) {
                 std::cout << "Usage: delete-chat <chat_id>\n";
                 continue;
             }
@@ -361,12 +399,12 @@ int main() {
                 std::cout << "Error: require system-admin permissions.\n";
                 continue;
             }
-            bool ok = app.deleteChat(MyString(chatID.c_str()));
+            bool ok = app.deleteChat(MyString(cid2));
             std::cout << (ok ? "Chat deleted.\n" : "Failed.\n");
-        } else if (cmd == "delete-group") {
-            size_t posArg = 0;
-            std::string chatID = getArg(posArg);
-            if (chatID.empty()) {
+        } else if (strcmp(cmd, "delete-group") == 0) {
+            char* pos = args;
+            char* cid3 = ChatSystem::getArg(pos);
+            if (!cid3) {
                 std::cout << "Usage: delete-group <chat_id>\n";
                 continue;
             }
@@ -374,21 +412,21 @@ int main() {
                 std::cout << "Error: require system-admin permissions.\n";
                 continue;
             }
-            bool ok = app.deleteChat(MyString(chatID.c_str()));
+            bool ok = app.deleteChat(MyString(cid3));
             std::cout << (ok ? "Group deleted!\n" : "Failed.\n");
-        } else if (cmd == "view-all-users") {
+        } else if (strcmp(cmd, "view-all-users") == 0) {
             if (!app.getLoggedInUser() || !app.getLoggedInUser()->isAdmin()) {
                 std::cout << "Error: require system-admin permissions.\n";
                 continue;
             }
             app.viewAllUsers();
-        } else if (cmd == "view-all-chats") {
+        } else if (strcmp(cmd, "view-all-chats") == 0) {
             if (!app.getLoggedInUser() || !app.getLoggedInUser()->isAdmin()) {
                 std::cout << "Error: require system-admin permissions.\n";
                 continue;
             }
             app.viewAllChats();
-        } else if (cmd == "help") {
+        } else if (strcmp(cmd, "help") == 0) {
             std::cout <<
 "Available commands:\n"
 "  register|create-account <username> <password> [admin]\n"
@@ -425,11 +463,40 @@ int main() {
         }
     }
 
-    FileManager::saveChats         (app.getChats(),         "data/chats.txt");
-    FileManager::saveMessages      (app.getChats(),         "data/messages.txt");
-    FileManager::saveChatsBinary   (app.getChats(),         "data/chats.dat");
-    FileManager::saveMessagesBinary(app.getChats(),         "data/messages.dat");
-    FileManager::saveUsers         (app.getUsers(),         "data/users.txt");
+    for (size_t i = 0; i < app.getChats().size(); ++i) {
+        Chat* c = app.getChats()[i];
+        MyString id = c->getID(); 
+
+        MyVector<Chat*> single;
+        single.push_back(c);
+
+        FileManager::saveChats(
+        single,
+        ( MyString("data/chats_") + id + MyString(".txt") ).c_str()
+        );
+        FileManager::saveMessages(
+        single,
+        ( MyString("data/messages_") + id + MyString(".txt") ).c_str()
+        );
+
+        FileManager::saveChatsBinary(
+        single,
+        ( MyString("data/chats_") + id + MyString(".dat.bin") ).c_str()
+        );
+        FileManager::saveMessagesBinary(
+        single,
+        ( MyString("data/messages_") + id + MyString(".dat.bin") ).c_str()
+        );
+
+        FileManager::saveChatsBinary(
+        single,
+        ( MyString("data/chats_") + id + MyString(".bin") ).c_str()
+        );
+    }
+
+
+    FileManager::saveUsers(app.getUsers(),       "data/users.txt");
+    FileManager::saveUsersBinary(app.getUsers(), "data/users.dat.bin");
 
     std::cout << "Exiting...\n";
     return 0;

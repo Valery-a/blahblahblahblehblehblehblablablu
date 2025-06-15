@@ -39,7 +39,7 @@ public:
 
     bool createIndividualChat(const MyString& user2);
     bool createGroupChat(const MyString& groupName);
-
+    
     void sendMessage(const MyString& chatID, const MyString& message);
     void viewMessages(const MyString& chatID) const;
 
@@ -72,6 +72,8 @@ public:
     bool setGroupOpen(const MyString& chatID, bool open);
 
     void initializeUserChats();
+
+    static char* getArg(char*& p);
 };
 
 #endif

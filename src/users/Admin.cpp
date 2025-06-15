@@ -1,9 +1,18 @@
 #include "Admin.h"
 
-Admin::Admin() : User(), adminCode("0000") {}
+const MyString Admin::MASTER_CODE = "7281";
 
-Admin::Admin(const MyString& username, const MyString& password, const MyString& code)
-    : User(username, password), adminCode(code) {}
+Admin::Admin()
+    : User()
+    , adminCode(MASTER_CODE)
+{}
+
+Admin::Admin(const MyString& username,
+             const MyString& password,
+             const MyString& code)
+    : User(username, password)
+    , adminCode(code)
+{}
 
 bool Admin::isAdmin() const {
     return true;

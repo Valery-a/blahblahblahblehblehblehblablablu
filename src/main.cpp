@@ -1,8 +1,8 @@
 #include <iostream>
 #include <sstream>
-#include "src/sys/ChatSystem.h"
-#include "src/storage/FileManager.h"
-#include "src/chats/GroupChat.h"
+#include "sys/ChatSystem.h"
+#include "storage/FileManager.h"
+#include "chats/GroupChat.h"
 
 int main() {
     ChatSystem app;
@@ -27,7 +27,6 @@ int main() {
             break;
         }
 
-        // REGISTER / CREATE-ACCOUNT
         else if (cmd == "register" || cmd == "create-account") {
             std::string u, p, role;
             if (!(iss >> u >> p)) {
@@ -63,7 +62,6 @@ int main() {
             }
         }
 
-        // LOGIN
         else if (cmd == "login") {
             std::string u, p;
             if (!(iss >> u)) {
@@ -143,6 +141,47 @@ int main() {
             bool ok = app.createGroupChat(MyString(g.c_str()));
             std::cout << (ok ? "Group created.\n" : "Group could not be created.\n");
         }
+
+        else if (cmd == "request-join") {
+        std::string cid; 
+        if (!(iss >> cid)) { std::cout << "Usage: request-join <chat_id>\n"; continue; }
+        bool ok = app.requestJoin(MyString(cid.c_str()));
+        std::cout << (ok ? "Request sent or joined.\n" : "Cannot request join.\n");
+    }
+
+    else if (cmd == "list-requests") {
+        std::string cid;
+        if (!(iss >> cid)) { std::cout << "Usage: list-requests <chat_id>\n"; continue; }
+        if (!app.listJoinRequests(MyString(cid.c_str())))
+            std::cout << "Unauthorized or no such group.\n";
+    }
+
+    else if (cmd == "approve-join") {
+        std::string cid, user;
+        if (!(iss >> cid >> user)) { std::cout << "Usage: approve-join <chat_id> <username>\n"; continue; }
+        bool ok = app.approveJoin(MyString(cid.c_str()), MyString(user.c_str()));
+        std::cout << (ok ? "User approved.\n" : "Cannot approve.\n");
+    }
+
+    else if (cmd == "reject-join") {
+        std::string cid, user;
+        if (!(iss >> cid >> user)) { std::cout << "Usage: reject-join <chat_id> <username>\n"; continue; }
+        bool ok = app.rejectJoin(MyString(cid.c_str()), MyString(user.c_str()));
+        std::cout << (ok ? "Request rejected.\n" : "Cannot reject.\n");
+    }
+
+    else if (cmd == "set-membership") {
+        std::string cid, mode;
+        if (!(iss >> cid >> mode) || (mode != "open" && mode != "closed")) {
+            std::cout << "Usage: set-membership <chat_id> <open|closed>\n";
+            continue;
+        }
+        bool open = (mode == "open");
+        bool ok = app.setGroupOpen(MyString(cid.c_str()), open);
+        std::cout << (ok
+            ? std::string("Membership now ") + mode + ".\n"
+            : "Cannot change membership mode.\n");
+    }
 
         // SELECT-CHAT
         else if (cmd == "select-chat") {
@@ -401,11 +440,16 @@ int main() {
         else if (cmd == "help") {
             std::cout <<
 "Available commands:\n"
-"  register|create-account <user> <pass> [admin]\n"
-"  login <user> [pass]\n"
+"  register|create-account <username> <password> [admin]\n"
+"  login <username> [password]\n"
 "  logout\n"
 "  create-individual <user>\n"
 "  create-group <group_name>\n"
+"  request-join <chat_id>\n"
+"  list-requests <chat_id>\n"
+"  approve-join <chat_id> <username>\n"
+"  reject-join <chat_id> <username>\n"
+"  set-membership <chat_id> <open|closed>\n"
 "  select-chat <chat_id>\n"
 "  send <chat_id> <message…>\n"
 "  view-messages <chat_id>\n"
@@ -418,7 +462,7 @@ int main() {
 "  set-group-admin <chat_id> <user>\n"
 "  group-stats <chat_id>\n"
 "  leave-group <chat_id>\n"
-"  delete-user <user> (system-admin only)\n"
+"  delete-user <username> (system-admin only)\n"
 "  delete-chat <chat_id> (system-admin only)\n"
 "  delete-group <chat_id> (system-admin only)\n"
 "  view-all-users (system-admin only)\n"

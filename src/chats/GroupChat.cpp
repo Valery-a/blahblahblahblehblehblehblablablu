@@ -1,10 +1,26 @@
+// chats/GroupChat.cpp
 #include "GroupChat.h"
 #include <iostream>
 
-GroupChat::GroupChat(const MyString& id, const MyString& groupName, const MyString& creator)
-    : Chat(id), groupName(groupName) {
+GroupChat::GroupChat(const MyString& id,
+                     const MyString& groupName,
+                     const MyString& creator)
+  : Chat(id),
+    groupName(groupName),
+    creator(creator),
+    membershipOpen(false)   // default: closed
+{
+    // creator is automatically a participant & co-leader
     addParticipant(creator);
     addAdmin(creator);
+}
+
+const MyString& GroupChat::getCreator() const {
+    return creator;
+}
+
+const MyString& GroupChat::getGroupName() const {
+    return groupName;
 }
 
 void GroupChat::addParticipant(const MyString& username) {
@@ -14,13 +30,14 @@ void GroupChat::addParticipant(const MyString& username) {
 }
 
 void GroupChat::removeParticipant(const MyString& username) {
+    // remove from participants
     for (size_t i = 0; i < participants.size(); ++i) {
         if (participants[i] == username) {
             participants.removeAt(i);
             break;
         }
     }
-
+    // remove from admins if there
     for (size_t i = 0; i < admins.size(); ++i) {
         if (admins[i] == username) {
             admins.removeAt(i);
@@ -30,30 +47,100 @@ void GroupChat::removeParticipant(const MyString& username) {
 }
 
 void GroupChat::addAdmin(const MyString& username) {
-    if (!isAdmin(username)) {
+    if (hasParticipant(username) && !isAdmin(username)) {
         admins.push_back(username);
     }
 }
 
 bool GroupChat::isAdmin(const MyString& username) const {
     for (size_t i = 0; i < admins.size(); ++i) {
-        if (admins[i] == username) {
+        if (admins[i] == username) return true;
+    }
+    return false;
+}
+
+// ----------------------------------
+// membershipOpen toggle
+bool GroupChat::isMembershipOpen() const {
+    return membershipOpen;
+}
+
+void GroupChat::setMembershipOpen(bool open) {
+    membershipOpen = open;
+}
+
+// ----------------------------------
+// pending requests
+const MyVector<MyString>& GroupChat::getPendingRequests() const {
+    return pendingRequests;
+}
+
+bool GroupChat::addJoinRequest(const MyString& username) {
+    if (hasParticipant(username)) return false;
+    // no duplicates
+    for (size_t i = 0; i < pendingRequests.size(); ++i)
+        if (pendingRequests[i] == username)
+            return false;
+    pendingRequests.push_back(username);
+    return true;
+}
+
+bool GroupChat::approveJoinRequest(const MyString& username) {
+    for (size_t i = 0; i < pendingRequests.size(); ++i) {
+        if (pendingRequests[i] == username) {
+            pendingRequests.removeAt(i);
+            addParticipant(username);
             return true;
         }
     }
     return false;
 }
 
-void GroupChat::printChatInfo() const {
-    std::cout << "Group Chat: " << groupName << " (" << chatID << ")" << std::endl;
-    std::cout << "Participants: ";
-    for (size_t i = 0; i < participants.size(); ++i) {
-        std::cout << participants[i];
-        if (i < participants.size() - 1) std::cout << ", ";
+bool GroupChat::rejectJoinRequest(const MyString& username) {
+    for (size_t i = 0; i < pendingRequests.size(); ++i) {
+        if (pendingRequests[i] == username) {
+            pendingRequests.removeAt(i);
+            return true;
+        }
     }
-    std::cout << std::endl;
+    return false;
 }
 
-const MyString& GroupChat::getGroupName() const {
-    return groupName;
+// ----------------------------------
+// display
+void GroupChat::printChatInfo() const {
+    std::cout << "Group Chat: " << groupName
+              << " (" << getID().c_str() << ")\n";
+
+    std::cout << "  Creator:  " << creator.c_str() << "\n";
+
+    std::cout << "  Co-leaders: ";
+    if (admins.empty()) std::cout << "None";
+    else {
+        for (size_t i = 0; i < admins.size(); ++i) {
+            std::cout << admins[i].c_str();
+            if (i+1 < admins.size()) std::cout << ", ";
+        }
+    }
+    std::cout << "\n";
+
+    std::cout << "  Membership: "
+              << (membershipOpen ? "open" : "closed")
+              << "\n";
+
+    std::cout << "  Members (" << participants.size() << "): ";
+    for (size_t i = 0; i < participants.size(); ++i) {
+        std::cout << participants[i].c_str();
+        if (i+1 < participants.size()) std::cout << ", ";
+    }
+    std::cout << "\n";
+
+    if (!pendingRequests.empty()) {
+        std::cout << "  Pending Requests: ";
+        for (size_t i = 0; i < pendingRequests.size(); ++i) {
+            std::cout << pendingRequests[i].c_str();
+            if (i+1 < pendingRequests.size()) std::cout << ", ";
+        }
+        std::cout << "\n";
+    }
 }

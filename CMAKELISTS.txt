@@ -13,7 +13,7 @@ include_directories(
 
 file(GLOB_RECURSE SOURCES
     src/*.cpp
-    main.cpp
+    src/main.cpp
 )
 
 add_executable(BlahBlahChat ${SOURCES})

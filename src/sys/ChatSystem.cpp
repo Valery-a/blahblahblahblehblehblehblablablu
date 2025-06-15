@@ -147,16 +147,45 @@ bool ChatSystem::addMemberToGroup(const MyString& chatID, const MyString& user) 
     return true;
 }
 
-bool ChatSystem::removeMemberFromGroup(const MyString& chatID, const MyString& user) {
-    if (!loggedInUser) return false;
+bool ChatSystem::removeMemberFromGroup(const MyString& chatID, const MyString& username) {
+    if (!loggedInUser) 
+        return false;
+
     Chat* c = findChat(chatID);
     auto* g = dynamic_cast<GroupChat*>(c);
-    User* u = findUser(user);
-    if (!g || !u) return false;
-    if (!g->isAdmin(loggedInUser->getUsername()) && !loggedInUser->isAdmin())
+    User* target = findUser(username);
+
+    // must be a valid group and a valid user
+    if (!g || !target) 
         return false;
-    g->removeParticipant(user);
-    u->removeChat(chatID);
+
+    // only attempt removal if they’re currently in the group
+    if (!g->hasParticipant(username)) 
+        return false;
+
+    bool execIsSysAdmin   = loggedInUser->isAdmin();
+    bool execIsGroupAdmin = g->isAdmin(loggedInUser->getUsername());
+    if (!execIsSysAdmin && !execIsGroupAdmin) 
+        return false;
+
+    // system‐admins can remove anyone; non‐sys‐admins cannot remove other sys‐admins
+    if (target->isAdmin() && !execIsSysAdmin) 
+        return false;
+
+    // enforce creator/co‐admin hierarchy
+    const MyString& creator     = g->getCreator();
+    bool execIsCreator          = (creator == loggedInUser->getUsername());
+    bool tgtIsCreator           = (creator == username);
+
+    // co‐admins (but not the creator) cannot remove creator or fellow admins
+    if (execIsGroupAdmin && !execIsCreator) {
+        if (tgtIsCreator)         return false;
+        if (g->isAdmin(username)) return false;
+    }
+
+    // all checks passed → perform removal
+    g->removeParticipant(username);
+    target->removeChat(chatID);
     return true;
 }
 
@@ -261,4 +290,131 @@ void ChatSystem::viewAllUsers() const {
 
 User* ChatSystem::getLoggedInUser() const {
     return loggedInUser;
+}
+
+MyVector<User*>& ChatSystem::getUsers() {
+    return users;
+}
+
+MyVector<Chat*>& ChatSystem::getChats() {
+    return chats;
+}
+
+// — your existing const overloads —
+const MyVector<User*>& ChatSystem::getUsers() const {
+    return users;
+}
+
+const MyVector<Chat*>& ChatSystem::getChats() const {
+    return chats;
+}
+
+void ChatSystem::viewGroupMembers(const MyString& chatID) const {
+    Chat* c = findChat(chatID);
+    auto* g = dynamic_cast<GroupChat*>(c);
+    if (!g) {
+        std::cout << "Group not found.\n";
+        return;
+    }
+    std::cout << "Members of " << chatID.c_str() << ":\n";
+    const MyString& creator = g->getCreator();
+    for (size_t i = 0; i < g->getParticipants().size(); ++i) {
+        const auto& m = g->getParticipants()[i];
+        std::cout << "- " << m.c_str();
+        if (m == creator) {
+            std::cout << " (creator)";
+        } else if (g->isAdmin(m)) {
+            std::cout << " (admin)";
+        }
+        std::cout << "\n";
+    }
+}
+
+bool ChatSystem::requestJoin(const MyString& chatID) {
+    if (!loggedInUser) return false;
+    Chat* c = findChat(chatID);
+    auto* g = dynamic_cast<GroupChat*>(c);
+    if (!g) return false;
+
+    const MyString& me = loggedInUser->getUsername();
+    if (g->hasParticipant(me))               return false;
+    if (g->isMembershipOpen()) {
+        // auto-join
+        g->addParticipant(me);
+        loggedInUser->addChat(chatID);
+        return true;
+    } else {
+        // enqueue
+        return g->addJoinRequest(me);
+    }
+}
+
+bool ChatSystem::listJoinRequests(const MyString& chatID) const {
+    if (!loggedInUser) return false;
+    Chat* c = findChat(chatID);
+    auto* g = dynamic_cast<GroupChat*>(c);
+    if (!g) return false;
+
+    const MyString& me = loggedInUser->getUsername();
+    bool amSysAdmin   = loggedInUser->isAdmin();
+    bool amGroupAdmin = g->isAdmin(me);
+    bool amCreator    = (g->getCreator() == me);
+    if (!amSysAdmin && !amGroupAdmin && !amCreator) return false;
+
+    const auto& reqs = g->getPendingRequests();
+    std::cout << "Pending for " << chatID.c_str() << ":\n";
+    for (size_t i = 0; i < reqs.size(); ++i) {
+        std::cout << "- " << reqs[i].c_str() << "\n";
+    }
+    return true;
+}
+
+bool ChatSystem::approveJoin(const MyString& chatID, const MyString& username) {
+    if (!loggedInUser) return false;
+    Chat* c = findChat(chatID);
+    auto* g = dynamic_cast<GroupChat*>(c);
+    User* u = findUser(username);
+    if (!g || !u) return false;
+
+    const MyString& me = loggedInUser->getUsername();
+    bool amSysAdmin   = loggedInUser->isAdmin();
+    bool amGroupAdmin = g->isAdmin(me);
+    bool amCreator    = (g->getCreator() == me);
+    if (!amSysAdmin && !amGroupAdmin && !amCreator) return false;
+
+    if (g->approveJoinRequest(username)) {
+        u->addChat(chatID);
+        return true;
+    }
+    return false;
+}
+
+bool ChatSystem::rejectJoin(const MyString& chatID, const MyString& username) {
+    if (!loggedInUser) return false;
+    Chat* c = findChat(chatID);
+    auto* g = dynamic_cast<GroupChat*>(c);
+    if (!g) return false;
+
+    const MyString& me = loggedInUser->getUsername();
+    bool amSysAdmin   = loggedInUser->isAdmin();
+    bool amGroupAdmin = g->isAdmin(me);
+    bool amCreator    = (g->getCreator() == me);
+    if (!amSysAdmin && !amGroupAdmin && !amCreator) return false;
+
+    return g->rejectJoinRequest(username);
+}
+
+bool ChatSystem::setGroupOpen(const MyString& chatID, bool open) {
+    if (!loggedInUser) return false;
+    Chat* c = findChat(chatID);
+    auto* g = dynamic_cast<GroupChat*>(c);
+    if (!g) return false;
+
+    const MyString& me = loggedInUser->getUsername();
+    bool amSysAdmin   = loggedInUser->isAdmin();
+    bool amCreator    = (g->getCreator() == me);
+    if (!amSysAdmin && !amCreator) return false;
+
+    g->setMembershipOpen(open);
+    return true;
 }

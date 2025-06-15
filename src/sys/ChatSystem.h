@@ -30,6 +30,16 @@ public:
     bool login(const MyString& username, const MyString& password);
     void logout();
 
+    MyVector<User*>&   getUsers();
+    MyVector<Chat*>&   getChats();
+
+    // const (for read-only calls)
+    const MyVector<User*>& getUsers() const;
+    const MyVector<Chat*>& getChats() const;
+
+    User* getLoggedInUser() const;
+    void viewGroupMembers(const MyString& chatID) const;
+
     // chat creation
     bool createIndividualChat(const MyString& user2);
     bool createGroupChat(const MyString& groupName);
@@ -68,7 +78,11 @@ public:
 
     void viewAllUsers() const;
 
-    User* getLoggedInUser() const;
+    bool requestJoin(const MyString& chatID);
+    bool listJoinRequests(const MyString& chatID) const;
+    bool approveJoin(const MyString& chatID, const MyString& username);
+    bool rejectJoin(const MyString& chatID, const MyString& username);
+    bool setGroupOpen(const MyString& chatID, bool open);
 };
 
 #endif // CHATSYSTEM_H

@@ -42,3 +42,7 @@ const MyVector<UserChat>& User::getChats() const {
 bool User::isAdmin() const {
     return false;
 }
+
+MyVector<UserChat>& User::accessChats() {
+    return chatData;
+}

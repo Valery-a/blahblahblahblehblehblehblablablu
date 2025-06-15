@@ -25,6 +25,12 @@ public:
     static void  saveChatsBinary     (const MyVector<Chat*>& chats, const MyString& filename);
     static bool  loadMessagesBinary  (MyVector<Chat*>&    chats,   const MyString& filename);
     static void  saveMessagesBinary  (const MyVector<Chat*>& chats, const MyString& filename);
+
+    static bool  loadReadState (User& user,
+                                const MyVector<Chat*>& chats,
+                                const MyString& filename);
+    static void  saveReadState (const User& user,
+                                const MyString& filename);
 };
 
 #endif

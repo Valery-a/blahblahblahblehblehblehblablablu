@@ -41,6 +41,12 @@ int main() {
     }
     app.initializeUserChats();
 
+    for (size_t i = 0; i < app.getUsers().size(); ++i) {
+        User* u = app.getUsers()[i];
+        MyString f = MyString("data/read_") + u->getUsername() + MyString(".dat.bin");
+        FileManager::loadReadState(*u, app.getChats(), f);
+    }
+
 
     char line[1024];
     while (true) {
@@ -498,6 +504,12 @@ int main() {
     FileManager::saveUsers(app.getUsers(),       "data/users.txt");
     FileManager::saveUsersBinary(app.getUsers(), "data/users.dat.bin");
 
+    for (size_t i = 0; i < app.getUsers().size(); ++i) {
+        const User* u = app.getUsers()[i];
+        MyString fname = MyString("data/read_") + u->getUsername() + MyString(".dat.bin");
+        FileManager::saveReadState(*u, fname);
+    }
+    
     std::cout << "Exiting...\n";
     return 0;
 }

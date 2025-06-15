@@ -28,6 +28,8 @@ public:
     void removeChat(const MyString& chatID);
     const MyVector<UserChat>& getChats() const;
 
+    MyVector<UserChat>& accessChats();
+    
     virtual bool isAdmin() const;
     virtual ~User() = default;
 };

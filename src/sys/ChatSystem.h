@@ -41,7 +41,7 @@ public:
     bool createGroupChat(const MyString& groupName);
     
     void sendMessage(const MyString& chatID, const MyString& message);
-    void viewMessages(const MyString& chatID) const;
+    void viewMessages(const MyString& chatID);
 
     void selectChat(const MyString& chatID);
 

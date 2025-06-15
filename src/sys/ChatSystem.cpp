@@ -89,14 +89,32 @@ void ChatSystem::sendMessage(const MyString& id, const MyString& msg) {
     Chat* c = findChat(id);
     if (!c || !c->hasParticipant(loggedInUser->getUsername())) return;
     c->addMessage(Message(loggedInUser->getUsername(), msg));
+    MyVector<UserChat>& uChats = loggedInUser->accessChats();
+    for (size_t i = 0; i < uChats.size(); ++i) {
+        if (uChats[i].chatID == id) {
+            uChats[i].messages = c->getMessages();
+            break;
+        }
+    }
 }
 
-void ChatSystem::viewMessages(const MyString& id) const {
+void ChatSystem::viewMessages(const MyString& id) {
     if (!loggedInUser) return;
+
     Chat* c = findChat(id);
-    if (c && c->hasParticipant(loggedInUser->getUsername()))
-        c->printMessages();
+    if (!c || !c->hasParticipant(loggedInUser->getUsername())) return;
+
+    c->printMessages();
+
+    MyVector<UserChat>& uChats = loggedInUser->accessChats();
+    for (size_t i = 0; i < uChats.size(); ++i) {
+        if (uChats[i].chatID == id) {
+            uChats[i].messages = c->getMessages();
+            break;
+        }
+    }
 }
+
 
 void ChatSystem::selectChat(const MyString& id) {
     viewMessages(id);
@@ -110,11 +128,32 @@ void ChatSystem::selectChat(const MyString& id) {
 
 void ChatSystem::viewMyChats() const {
     if (!loggedInUser) return;
+
+    std::cout << "Chats:\n";
     const auto& uc = loggedInUser->getChats();
+
     for (size_t i = 0; i < uc.size(); ++i) {
-        std::cout << "- " << uc[i].chatID.c_str() << "\n";
+        Chat* c = findChat(uc[i].chatID);
+        if (!c) continue;
+
+        MyString label;
+        if (auto* g = dynamic_cast<GroupChat*>(c)) {
+            label = g->getGroupName();
+        } else {
+            const auto& parts = c->getParticipants();
+            label = (parts[0] == loggedInUser->getUsername()) ? parts[1] : parts[0];
+        }
+
+        size_t total  = c->getMessages().size();
+        size_t seen   = uc[i].messages.size();
+        size_t unread = (total > seen) ? (total - seen) : 0;
+
+        std::cout << "- " << label.c_str();
+        if (unread) std::cout << " (" << unread << " unread)";
+        std::cout << "\n";
     }
 }
+
 
 void ChatSystem::viewAllChats() const {
     for (size_t i = 0; i < chats.size(); ++i) {

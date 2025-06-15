@@ -385,18 +385,114 @@ bool FileManager::loadUsersBinary(MyVector<User*>& users, const MyString& filena
     return true;
 }
 
-void FileManager::saveUsersBinary(const MyVector<User*>& users, const MyString& filename) {
+void FileManager::saveUsersBinary(const MyVector<User*>& users,
+                                const MyString&        filename)
+{
     std::ofstream out(filename.c_str(), std::ios::binary);
+    if (!out) {
+        std::cerr << "Error opening " << filename.c_str() << " for writing.\n";
+        return;
+    }
+
     size_t count = users.size();
     out.write(reinterpret_cast<const char*>(&count), sizeof(count));
+
     for (size_t i = 0; i < count; ++i) {
         const User* u = users[i];
-        std::string name = u->getUsername().c_str();
-        std::string pass = u->getPassword().c_str();
-        std::string code = u->isAdmin() ? dynamic_cast<const Admin*>(u)->getAdminCode().c_str() : "";
+
+        const MyString& uname = u->getUsername();
+        const MyString& pwd   = u->getPassword();
+
+        MyString adminCode;
+        if (u->isAdmin()) {
+            const Admin* a = dynamic_cast<const Admin*>(u);
+            adminCode = a ? a->getAdminCode() : MyString("");
+        }
+
         size_t len;
-        len = name.size(); out.write(reinterpret_cast<const char*>(&len), sizeof(len)); out.write(name.data(), len);
-        len = pass.size(); out.write(reinterpret_cast<const char*>(&len), sizeof(len)); out.write(pass.data(), len);
-        len = code.size(); out.write(reinterpret_cast<const char*>(&len), sizeof(len)); out.write(code.data(), len);
+
+        len = uname.size();
+        out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+        out.write(uname.c_str(), len);
+
+        len = pwd.size();
+        out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+        out.write(pwd.c_str(), len);
+
+        len = adminCode.size();
+        out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+        if (len) {
+            out.write(adminCode.c_str(), len);
+        }
+    }
+}
+
+
+bool FileManager::loadReadState(User& user,
+                                const MyVector<Chat*>& chats,
+                                const MyString& filename)
+{
+    std::ifstream in(filename.c_str(), std::ios::binary);
+    if (!in) return false;
+
+    size_t pairCount;
+    in.read(reinterpret_cast<char*>(&pairCount), sizeof(pairCount));
+
+    MyVector<UserChat>& uc = user.accessChats();
+
+    for (size_t p = 0; p < pairCount; ++p) {
+        size_t len;  in.read(reinterpret_cast<char*>(&len), sizeof(len));
+        char* idBuf = new char[len + 1];
+        in.read(idBuf, len);  idBuf[len] = '\0';
+        MyString cid(idBuf);  delete[] idBuf;
+
+        size_t seen;  in.read(reinterpret_cast<char*>(&seen), sizeof(seen));
+
+        Chat* chat = nullptr;
+        for (size_t i = 0; i < chats.size(); ++i)
+            if (chats[i]->getID() == cid) { chat = chats[i]; break; }
+
+        if (!chat) continue;
+
+        bool found = false;
+        for (size_t i = 0; i < uc.size(); ++i)
+            if (uc[i].chatID == cid) {
+                uc[i].messages = MyVector<Message>();
+                const auto& src = chat->getMessages();
+                for (size_t m = 0; m < seen && m < src.size(); ++m)
+                    uc[i].messages.push_back(src[m]);
+                found = true;
+                break;
+            }
+        if (!found) {
+            UserChat slot;
+            slot.chatID = cid;
+            const auto& src = chat->getMessages();
+            for (size_t m = 0; m < seen && m < src.size(); ++m)
+                slot.messages.push_back(src[m]);
+            uc.push_back(slot);
+        }
+    }
+    return true;
+}
+
+void FileManager::saveReadState(const User& user,
+                                const MyString& filename)
+{
+    std::ofstream out(filename.c_str(), std::ios::binary);
+    if (!out) return;
+
+    const auto& uc = user.getChats();
+    size_t pairCount = uc.size();
+    out.write(reinterpret_cast<const char*>(&pairCount), sizeof(pairCount));
+
+    for (size_t i = 0; i < uc.size(); ++i) {
+        const MyString& cid   = uc[i].chatID;
+        size_t len = cid.size();
+        out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+        out.write(cid.c_str(), len);
+
+        size_t seen = uc[i].messages.size();
+        out.write(reinterpret_cast<const char*>(&seen), sizeof(seen));
     }
 }

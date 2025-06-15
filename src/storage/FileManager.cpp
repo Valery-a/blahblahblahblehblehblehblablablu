@@ -61,8 +61,13 @@ bool FileManager::loadChats(MyVector<Chat*>& chats, const MyString& filename) {
             std::cerr << "Malformed chat file.\n";
             return false;
         }
-        std::vector<std::string> parts(count);
-        for (size_t i = 0; i < count; ++i) in >> parts[i];
+        MyVector<MyString> parts;
+        for (size_t i = 0; i < count; ++i) {
+            std::string tmp;
+            in >> tmp;
+            parts.push_back(MyString(tmp.c_str()));
+        }
+
         bool isGroup = idBuf.size() > 6 && idBuf.substr(idBuf.size()-6) == "_group";
         Chat* c = nullptr;
         if (isGroup) {
@@ -70,15 +75,12 @@ bool FileManager::loadChats(MyVector<Chat*>& chats, const MyString& filename) {
             c = new GroupChat(
                 MyString(idBuf.c_str()),
                 MyString(gname.c_str()),
-                MyString(parts[0].c_str())
+                parts[0]
             );
             for (size_t i = 1; i < parts.size(); ++i)
-                c->addParticipant(MyString(parts[i].c_str()));
+                c->addParticipant(parts[i]);
         } else if (parts.size() == 2) {
-            c = new IndividualChat(
-                MyString(parts[0].c_str()),
-                MyString(parts[1].c_str())
-            );
+            c = new IndividualChat(parts[0], parts[1]);
         }
         if (c) chats.push_back(c);
     }
@@ -152,28 +154,27 @@ bool FileManager::loadChatsBinary(MyVector<Chat*>& chats, const MyString& filena
         size_t len; in.read(reinterpret_cast<char*>(&len), sizeof(len));
         std::string idBuf(len, '\0'); in.read(&idBuf[0], len);
         size_t pCount; in.read(reinterpret_cast<char*>(&pCount), sizeof(pCount));
-        std::vector<std::string> parts(pCount);
+        MyVector<MyString> parts;
         for (size_t j = 0; j < pCount; ++j) {
             size_t l2; in.read(reinterpret_cast<char*>(&l2), sizeof(l2));
-            parts[j].resize(l2);
-            in.read(&parts[j][0], l2);
+            std::string tmp(l2, '\0');
+            in.read(&tmp[0], l2);
+            parts.push_back(MyString(tmp.c_str()));
         }
-        bool isGroup = idBuf.size()>6 && idBuf.substr(idBuf.size()-6)=="_group";
+
+        bool isGroup = idBuf.size() > 6 && idBuf.substr(idBuf.size()-6) == "_group";
         Chat* c = nullptr;
         if (isGroup) {
             std::string gname = idBuf.substr(0, idBuf.size()-6);
             c = new GroupChat(
                 MyString(idBuf.c_str()),
                 MyString(gname.c_str()),
-                MyString(parts[0].c_str())
+                parts[0]
             );
             for (size_t k = 1; k < parts.size(); ++k)
-                c->addParticipant(MyString(parts[k].c_str()));
+                c->addParticipant(parts[k]);
         } else if (parts.size() == 2) {
-            c = new IndividualChat(
-                MyString(parts[0].c_str()),
-                MyString(parts[1].c_str())
-            );
+            c = new IndividualChat(parts[0], parts[1]);
         }
         if (c) chats.push_back(c);
     }
@@ -190,12 +191,13 @@ void FileManager::saveChatsBinary(const MyVector<Chat*>& chats, const MyString& 
         size_t len = id.size();
         out.write(reinterpret_cast<const char*>(&len), sizeof(len));
         out.write(id.c_str(), len);
+
         const MyVector<MyString>& parts = chats[i]->getParticipants();
         size_t pCount = parts.size();
         out.write(reinterpret_cast<const char*>(&pCount), sizeof(pCount));
         for (size_t j = 0; j < pCount; ++j) {
             const MyString& p = parts[j];
-            size_t l2       = p.size();
+            size_t l2 = p.size();
             out.write(reinterpret_cast<const char*>(&l2), sizeof(l2));
             out.write(p.c_str(), l2);
         }
@@ -212,9 +214,8 @@ bool FileManager::loadMessagesBinary(MyVector<Chat*>& chats, const MyString& fil
         MyString chatID(idBuf.c_str());
         size_t mCount; in.read(reinterpret_cast<char*>(&mCount), sizeof(mCount));
         Chat* chat = nullptr;
-        for (size_t j = 0; j < chats.size(); ++j) {
+        for (size_t j = 0; j < chats.size(); ++j)
             if (chats[j]->getID() == chatID) { chat = chats[j]; break; }
-        }
         for (size_t j = 0; j < mCount; ++j) {
             in.read(reinterpret_cast<char*>(&len), sizeof(len));
             std::string s(len, '\0'); in.read(&s[0], len);
@@ -237,12 +238,10 @@ void FileManager::saveMessagesBinary(const MyVector<Chat*>& chats, const MyStrin
     size_t chatCount = chats.size();
     out.write(reinterpret_cast<const char*>(&chatCount), sizeof(chatCount));
     for (size_t i = 0; i < chatCount; ++i) {
-        {
-            const MyString& id = chats[i]->getID();
-            size_t len = id.size();
-            out.write(reinterpret_cast<const char*>(&len), sizeof(len));
-            out.write(id.c_str(), len);
-        }
+        const MyString& id = chats[i]->getID();
+        size_t len = id.size();
+        out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+        out.write(id.c_str(), len);
 
         const MyVector<Message>& msgs = chats[i]->getMessages();
         size_t mCount = msgs.size();
@@ -251,13 +250,16 @@ void FileManager::saveMessagesBinary(const MyVector<Chat*>& chats, const MyStrin
             const MyString& sender = msgs[j].getSender();
             const MyString& text   = msgs[j].getContent();
             time_t          tstamp = msgs[j].getTimestamp();
-            size_t len;
-            len = sender.size();
-            out.write(reinterpret_cast<const char*>(&len), sizeof(len));
-            out.write(sender.c_str(), len);
-            len = text.size();
-            out.write(reinterpret_cast<const char*>(&len), sizeof(len));
-            out.write(text.c_str(), len);
+            size_t l2;
+
+            l2 = sender.size();
+            out.write(reinterpret_cast<const char*>(&l2), sizeof(l2));
+            out.write(sender.c_str(), l2);
+
+            l2 = text.size();
+            out.write(reinterpret_cast<const char*>(&l2), sizeof(l2));
+            out.write(text.c_str(), l2);
+
             out.write(reinterpret_cast<const char*>(&tstamp), sizeof(tstamp));
         }
     }

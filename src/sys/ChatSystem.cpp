@@ -1,9 +1,6 @@
-// src/sys/ChatSystem.cpp
 #include "ChatSystem.h"
 #include "../storage/FileManager.h"
-#include <algorithm>
 #include <iostream>
-#include <map>
 
 ChatSystem::ChatSystem() : loggedInUser(nullptr) {}
 ChatSystem::~ChatSystem() {
@@ -24,8 +21,6 @@ Chat* ChatSystem::findChat(const MyString& chatID) const {
             return chats[i];
     return nullptr;
 }
-
-// -- register / login / logout ----------------------------------
 
 bool ChatSystem::registerUser(const MyString& u, const MyString& p) {
     return registerUser(u, p, false, "");
@@ -53,8 +48,6 @@ void ChatSystem::logout() {
     loggedInUser = nullptr;
 }
 
-// -- create chats -----------------------------------------------
-
 bool ChatSystem::createIndividualChat(const MyString& other) {
     if (!loggedInUser) return false;
     User* o = findUser(other);
@@ -78,8 +71,6 @@ bool ChatSystem::createGroupChat(const MyString& groupName) {
     return true;
 }
 
-// -- send & view ------------------------------------------------
-
 void ChatSystem::sendMessage(const MyString& id, const MyString& msg) {
     if (!loggedInUser) return;
     Chat* c = findChat(id);
@@ -94,8 +85,6 @@ void ChatSystem::viewMessages(const MyString& id) const {
         c->printMessages();
 }
 
-// -- “select-chat”: view + prompt for a new message ----------
-
 void ChatSystem::selectChat(const MyString& id) {
     viewMessages(id);
     if (!loggedInUser) return;
@@ -105,8 +94,6 @@ void ChatSystem::selectChat(const MyString& id) {
         sendMessage(id, MyString(line.c_str()));
     }
 }
-
-// -- listing chats ---------------------------------------------
 
 void ChatSystem::viewMyChats() const {
     if (!loggedInUser) return;
@@ -132,8 +119,6 @@ void ChatSystem::viewAllChats() const {
     }
 }
 
-// -- group membership ------------------------------------------
-
 bool ChatSystem::addMemberToGroup(const MyString& chatID, const MyString& user) {
     if (!loggedInUser) return false;
     Chat* c = findChat(chatID);
@@ -155,11 +140,9 @@ bool ChatSystem::removeMemberFromGroup(const MyString& chatID, const MyString& u
     auto* g = dynamic_cast<GroupChat*>(c);
     User* target = findUser(username);
 
-    // must be a valid group and a valid user
     if (!g || !target) 
         return false;
 
-    // only attempt removal if they’re currently in the group
     if (!g->hasParticipant(username)) 
         return false;
 
@@ -168,28 +151,22 @@ bool ChatSystem::removeMemberFromGroup(const MyString& chatID, const MyString& u
     if (!execIsSysAdmin && !execIsGroupAdmin) 
         return false;
 
-    // system‐admins can remove anyone; non‐sys‐admins cannot remove other sys‐admins
     if (target->isAdmin() && !execIsSysAdmin) 
         return false;
 
-    // enforce creator/co‐admin hierarchy
     const MyString& creator     = g->getCreator();
     bool execIsCreator          = (creator == loggedInUser->getUsername());
     bool tgtIsCreator           = (creator == username);
 
-    // co‐admins (but not the creator) cannot remove creator or fellow admins
     if (execIsGroupAdmin && !execIsCreator) {
         if (tgtIsCreator)         return false;
         if (g->isAdmin(username)) return false;
     }
 
-    // all checks passed → perform removal
     g->removeParticipant(username);
     target->removeChat(chatID);
     return true;
 }
-
-// -- leave-group, add-to-group, kick-from-group aliases --------
 
 bool ChatSystem::leaveGroup(const MyString& chatID) {
     if (!loggedInUser) return false;
@@ -204,8 +181,6 @@ bool ChatSystem::kickFromGroup(const MyString& chatID, const MyString& username)
     return removeMemberFromGroup(chatID, username);
 }
 
-// -- set someone as group-admin --------------------------------
-
 bool ChatSystem::setGroupAdmin(const MyString& chatID, const MyString& username) {
     if (!loggedInUser) return false;
     Chat* c = findChat(chatID);
@@ -217,8 +192,6 @@ bool ChatSystem::setGroupAdmin(const MyString& chatID, const MyString& username)
     return true;
 }
 
-// -- group-stats ------------------------------------------------
-
 void ChatSystem::groupStats(const MyString& chatID) const {
     Chat* c = findChat(chatID);
     auto* g = dynamic_cast<GroupChat*>(c);
@@ -226,30 +199,56 @@ void ChatSystem::groupStats(const MyString& chatID) const {
         std::cout << "Group not found.\n";
         return;
     }
+
     size_t memberCount = g->getParticipants().size();
     size_t msgCount    = g->getMessages().size();
 
-    // tally per-sender counts
-    std::map<std::string,int> freq;
+    MyVector<MyString>  senders;
+    MyVector<size_t>    counts;
+
     const auto& msgs = g->getMessages();
-    for (size_t i = 0; i < msgs.size(); ++i)
-        freq[ msgs[i].getSender().c_str() ]++;
+    for (size_t i = 0; i < msgs.size(); ++i) {
+        MyString sender = msgs[i].getSender();
+        bool found = false;
+        for (size_t j = 0; j < senders.size(); ++j) {
+            if (senders[j] == sender) {
+                counts[j] += 1;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            senders.push_back(sender);
+            counts.push_back(1);
+        }
+    }
 
-    // find top
-    auto top = std::max_element(freq.begin(), freq.end(),
-        [](auto& a, auto& b){ return a.second < b.second; });
+    size_t topIdx = 0;
+    for (size_t j = 1; j < counts.size(); ++j) {
+        if (counts[j] > counts[topIdx]) {
+            topIdx = j;
+        }
+    }
 
-    std::cout << g->getGroupName().c_str() << ": "
-              << memberCount << " members, "
-              << msgCount    << " msg, Top: "
-              << top->first << " (" << top->second << " msg)\n";
+    if (counts.empty()) {
+        std::cout
+            << g->getGroupName().c_str() << ": "
+            << memberCount << " members, "
+            << msgCount    << " msg, "
+            << "Top: N/A\n";
+    } else {
+        std::cout
+            << g->getGroupName().c_str() << ": "
+            << memberCount << " members, "
+            << msgCount    << " msg, Top: "
+            << senders[topIdx].c_str()
+            << " (" << counts[topIdx] << " msg)\n";
+    }
 }
 
-// -- delete-user / delete-chat enhancements --------------------
 
 bool ChatSystem::deleteUser(const MyString& username) {
     if (!loggedInUser || !loggedInUser->isAdmin()) return false;
-    // remove from users[]
     for (size_t i = 0; i < users.size(); ++i) {
         if (users[i]->getUsername() == username) {
             delete users[i];
@@ -257,7 +256,6 @@ bool ChatSystem::deleteUser(const MyString& username) {
             break;
         }
     }
-    // scrub from all chats
     for (size_t i = 0; i < chats.size(); ++i)
         chats[i]->removeParticipant(username);
     return true;
@@ -265,7 +263,6 @@ bool ChatSystem::deleteUser(const MyString& username) {
 
 bool ChatSystem::deleteChat(const MyString& chatID) {
     if (!loggedInUser || !loggedInUser->isAdmin()) return false;
-    // remove from chats[]
     for (size_t i = 0; i < chats.size(); ++i) {
         if (chats[i]->getID() == chatID) {
             delete chats[i];
@@ -273,7 +270,6 @@ bool ChatSystem::deleteChat(const MyString& chatID) {
             break;
         }
     }
-    // scrub from every user’s chatData
     for (size_t i = 0; i < users.size(); ++i)
         users[i]->removeChat(chatID);
     return true;
@@ -300,7 +296,6 @@ MyVector<Chat*>& ChatSystem::getChats() {
     return chats;
 }
 
-// — your existing const overloads —
 const MyVector<User*>& ChatSystem::getUsers() const {
     return users;
 }
@@ -310,12 +305,26 @@ const MyVector<Chat*>& ChatSystem::getChats() const {
 }
 
 void ChatSystem::viewGroupMembers(const MyString& chatID) const {
+    if (!loggedInUser) {
+        std::cout << "Please login first.\n";
+        return;
+    }
+
     Chat* c = findChat(chatID);
     auto* g = dynamic_cast<GroupChat*>(c);
     if (!g) {
         std::cout << "Group not found.\n";
         return;
     }
+
+    const MyString& me = loggedInUser->getUsername();
+    bool isMember   = g->hasParticipant(me);
+    bool isSysAdmin = loggedInUser->isAdmin();
+    if (!isMember && !isSysAdmin) {
+        std::cout << "Unauthorized or not a member of this group.\n";
+        return;
+    }
+
     std::cout << "Members of " << chatID.c_str() << ":\n";
     const MyString& creator = g->getCreator();
     for (size_t i = 0; i < g->getParticipants().size(); ++i) {
@@ -339,12 +348,10 @@ bool ChatSystem::requestJoin(const MyString& chatID) {
     const MyString& me = loggedInUser->getUsername();
     if (g->hasParticipant(me))               return false;
     if (g->isMembershipOpen()) {
-        // auto-join
         g->addParticipant(me);
         loggedInUser->addChat(chatID);
         return true;
     } else {
-        // enqueue
         return g->addJoinRequest(me);
     }
 }
@@ -417,4 +424,19 @@ bool ChatSystem::setGroupOpen(const MyString& chatID, bool open) {
 
     g->setMembershipOpen(open);
     return true;
+}
+
+void ChatSystem::initializeUserChats() {
+    for (size_t ci = 0; ci < chats.size(); ++ci) {
+        Chat* c = chats[ci];
+        const MyString& chatID = c->getID();
+        const auto& parts = c->getParticipants();
+        for (size_t pi = 0; pi < parts.size(); ++pi) {
+            const MyString& uname = parts[pi];
+            User* u = findUser(uname);
+            if (u) {
+                u->addChat(chatID);
+            }
+        }
+    }
 }

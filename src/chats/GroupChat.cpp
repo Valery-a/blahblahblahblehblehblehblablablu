@@ -1,4 +1,3 @@
-// chats/GroupChat.cpp
 #include "GroupChat.h"
 #include <iostream>
 
@@ -8,9 +7,8 @@ GroupChat::GroupChat(const MyString& id,
   : Chat(id),
     groupName(groupName),
     creator(creator),
-    membershipOpen(false)   // default: closed
+    membershipOpen(false)
 {
-    // creator is automatically a participant & co-leader
     addParticipant(creator);
     addAdmin(creator);
 }
@@ -30,14 +28,12 @@ void GroupChat::addParticipant(const MyString& username) {
 }
 
 void GroupChat::removeParticipant(const MyString& username) {
-    // remove from participants
     for (size_t i = 0; i < participants.size(); ++i) {
         if (participants[i] == username) {
             participants.removeAt(i);
             break;
         }
     }
-    // remove from admins if there
     for (size_t i = 0; i < admins.size(); ++i) {
         if (admins[i] == username) {
             admins.removeAt(i);
@@ -59,8 +55,6 @@ bool GroupChat::isAdmin(const MyString& username) const {
     return false;
 }
 
-// ----------------------------------
-// membershipOpen toggle
 bool GroupChat::isMembershipOpen() const {
     return membershipOpen;
 }
@@ -69,15 +63,12 @@ void GroupChat::setMembershipOpen(bool open) {
     membershipOpen = open;
 }
 
-// ----------------------------------
-// pending requests
 const MyVector<MyString>& GroupChat::getPendingRequests() const {
     return pendingRequests;
 }
 
 bool GroupChat::addJoinRequest(const MyString& username) {
     if (hasParticipant(username)) return false;
-    // no duplicates
     for (size_t i = 0; i < pendingRequests.size(); ++i)
         if (pendingRequests[i] == username)
             return false;
@@ -106,8 +97,6 @@ bool GroupChat::rejectJoinRequest(const MyString& username) {
     return false;
 }
 
-// ----------------------------------
-// display
 void GroupChat::printChatInfo() const {
     std::cout << "Group Chat: " << groupName
               << " (" << getID().c_str() << ")\n";

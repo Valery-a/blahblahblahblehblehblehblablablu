@@ -4,6 +4,7 @@ project(BlahBlahChat)
 set(CMAKE_CXX_STANDARD 17)
 
 include_directories(
+    src/anim
     src/util
     src/users
     src/chats

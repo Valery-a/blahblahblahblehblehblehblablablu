@@ -1,8 +1,6 @@
 #include "FileManager.h"
 #include <fstream>
 #include <iostream>
-#include <string>
-#include <vector>
 #include <ctime>
 
 bool FileManager::loadUsers(MyVector<User*>& users, const MyString& filename) {
